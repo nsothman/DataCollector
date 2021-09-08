@@ -7,10 +7,10 @@ from threading import Thread
 import uuid
 
 # FLAGS
-global capture,rec_frame, grey, switch, neg, detect, rec, out
+global cam_id, capture,rec_frame, grey, switch, detect, rec, out
+cam_id=0
 capture=0
 grey=0
-neg=0
 detect=0
 switch=1
 rec=0
@@ -52,7 +52,7 @@ timed = bool(os.environ.get("SYNC_TEST", False))
 #stream_manager.startRead()
 
 # IF LOCAL CAM STREAM
-camera = cv2.VideoCapture(0)
+camera = cv2.VideoCapture(cam_id)
 
 def record(out):
     global rec_frame
@@ -87,17 +87,15 @@ def record(out):
 
 
 def gen_frames():  # generate frame by frame from camera
-    global out, capture,rec_frame
+    global out, capture, rec_frame
     while True:
         _, frame =  camera.read()
         success = True
         if success:
-            if(detect):
-                frame= detect_model(frame)
+            #if(detect):
+            #    frame= detect_model(frame)
             if(grey):
                 frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-            if(neg):
-                frame=cv2.bitwise_not(frame)
             if(capture):
                 capture=0
                 now = datetime.datetime.now()
@@ -106,7 +104,7 @@ def gen_frames():  # generate frame by frame from camera
 
             if(rec):
                 rec_frame=frame
-                frame= cv2.putText(cv2.flip(frame,1),"Recording...", (0,25), cv2.FONT_HERSHEY_SIMPLEX, 1, (0,0,255),4)
+                frame= cv2.putText(cv2.flip(frame,1),"R", (0,25), cv2.FONT_HERSHEY_SIMPLEX, 1, (0,0,255),4)
                 frame=cv2.flip(frame,1)
 
 
@@ -135,7 +133,7 @@ def video_feed():
 
 @app.route('/requests',methods=['POST','GET'])
 def tasks():
-    global switch, camera
+    global switch, camera, cam_id
     if request.method == 'POST':
         if request.form.get('click') == 'Capture':
             global capture
@@ -143,23 +141,19 @@ def tasks():
         elif  request.form.get('grey') == 'Grey':
             global grey
             grey=not grey
-        elif  request.form.get('neg') == 'Negative':
-            global neg
-            neg=not neg
-        elif  request.form.get('detect') == 'Detect Mode':
-            global detect
-            detect=not detect
-            if(detect):
-                time.sleep(4)
+        #elif  request.form.get('detect') == 'Detect Mode':
+        #    global detect
+        #    detect=not detect
+        #    if(detect):
+        #        time.sleep(4)
         elif  request.form.get('stop') == 'Stop/Start':
-
             if(switch==1):
                 switch=0
                 camera.release()
                 cv2.destroyAllWindows()
 
             else:
-                camera = cv2.VideoCapture(0)
+                camera = cv2.VideoCapture(cam_id)
                 switch=1
         elif  request.form.get('rec') == 'Start/Stop Recording':
             global rec, out
@@ -167,13 +161,19 @@ def tasks():
             if(rec):
                 now=datetime.datetime.now()
                 fourcc = cv2.VideoWriter_fourcc(*'XVID')
-                out = cv2.VideoWriter('vid_{}.avi'.format(str(now).replace(":",'')), fourcc, 20.0, (640, 480))
+                out = cv2.VideoWriter('{}vid_{}.avi'.format("recordings/", str(now).replace(":",'')), fourcc, 20.0, (640, 480))
                 #Start new thread for recording the video
                 thread = Thread(target = record, args=[out,])
                 thread.start()
             elif(rec==False):
                 out.release()
+        elif request.form.get('cam') != cam_id:
+            c = cv2.VideoCapture(int(request.form.get('cam')))
+            if c.isOpened():
+                camera = c
+                cam_id = request.form.get('cam')
 
+            
 
     elif request.method=='GET':
         return redirect('/')
@@ -181,7 +181,7 @@ def tasks():
 
 
 if __name__ == '__main__':
-    app.run()
+    app.run(host='0.0.0.0', port=5343, threaded=True)
 
 camera.release()
 cv2.destroyAllWindows()
